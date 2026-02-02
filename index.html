@@ -1,1 +1,69 @@
-<!doctype html><meta charset='utf-8'><title>VIP</title>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VIP Orders Tracker</title>
+
+  <!-- مهم جداً: مسارات نسبية -->
+  <link rel="stylesheet" href="./styles.css?v=10" />
+  <script defer src="./app.js?v=10"></script>
+</head>
+
+<body>
+  <!-- Login -->
+  <div class="login-card" id="loginBox">
+    <div class="login-icon">📦</div>
+    <h3>متابعة الطلبات</h3>
+
+    <input id="user" placeholder="اسم المستخدم" autocomplete="username" />
+    <input id="pass" type="password" placeholder="كلمة المرور" autocomplete="current-password" />
+    <button id="loginBtn">تسجيل الدخول</button>
+
+    <div class="hint" style="margin-top:8px;color:#333;opacity:.7">
+      إذا ظهرت صفحة بيضاء سابقاً: هذا الإصدار يعرض رسالة الخطأ مباشرة.
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="hide" id="dash">
+    <div class="header">VIP Orders Tracker</div>
+
+    <div class="container">
+      <div class="nav-bar">
+        <button class="nav-btn active" id="navClients">👥 العملاء</button>
+        <button class="nav-btn" id="navSearch">🔍 البحث</button>
+        <button class="nav-btn" id="navModels">📦 الموديلات</button>
+      </div>
+
+      <div id="statusLine" class="hint"></div>
+
+      <div id="clients" class="section active">
+        <div class="toolbar">
+          <button id="btnAll" class="btn-all active">📋 كل العملاء</button>
+          <button id="btnReady" class="btn-ready">✅ العملاء الجاهزين</button>
+          <button id="btnRefresh" class="btn-refresh">🔄 تحديث الآن</button>
+        </div>
+
+        <div id="loadingBox" class="loading hide">⏳ جاري التحميل...</div>
+        <div id="cards"></div>
+      </div>
+
+      <div id="search" class="section">
+        <input id="searchInput" placeholder="ابحث باسم العميل..." />
+        <div id="searchResults"></div>
+      </div>
+
+      <div id="models" class="section">
+        <div id="modelsContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <noscript>
+    <div style="padding:16px;font-family:Arial">
+      يجب تفعيل JavaScript لتعمل الصفحة.
+    </div>
+  </noscript>
+</body>
+</html>
