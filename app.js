@@ -1,453 +1,681 @@
-// VIP Orders Tracker (GitHub Pages) - CSV Only
+/* =========================
+   VIP Orders Tracker (GitHub Pages)
+   app.js - FULL FILE
+   ========================= */
+
+/** ====== CSV SOURCES (YOUR SHEET) ====== **/
 const CSV = {
-  STOCK: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTdyU9KNUduBp6l86bMVp_Bd9zBoAZR3-Iw0qQdSu4lv9ZAoRQSFNsJ9Zx5m7iV4E2A_51k3sncdQLw/pub?gid=0&single=true&output=csv",
-  ORDERS:"https://docs.google.com/spreadsheets/d/e/2PACX-1vTdyU9KNUduBp6l86bMVp_Bd9zBoAZR3-Iw0qQdSu4lv9ZAoRQSFNsJ9Zx5m7iV4E2A_51k3sncdQLw/pub?gid=743878492&single=true&output=csv",
-  OUT:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTdyU9KNUduBp6l86bMVp_Bd9zBoAZR3-Iw0qQdSu4lv9ZAoRQSFNsJ9Zx5m7iV4E2A_51k3sncdQLw/pub?gid=965988266&single=true&output=csv",
-  USERS: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTdyU9KNUduBp6l86bMVp_Bd9zBoAZR3-Iw0qQdSu4lv9ZAoRQSFNsJ9Zx5m7iV4E2A_51k3sncdQLw/pub?gid=658369520&single=true&output=csv",
+  STOCK: "https://docs.google.com/spreadsheets/d/1HfDubrlG9a2kM89GK4BRQ5hZI_X3oE4RYn86dT1fZmA/gviz/tq?tqx=out:csv&gid=0",
+  ORDERS:"https://docs.google.com/spreadsheets/d/1HfDubrlG9a2kM89GK4BRQ5hZI_X3oE4RYn86dT1fZmA/gviz/tq?tqx=out:csv&gid=743878492",
+  OUT:   "https://docs.google.com/spreadsheets/d/1HfDubrlG9a2kM89GK4BRQ5hZI_X3oE4RYn86dT1fZmA/gviz/tq?tqx=out:csv&gid=965988266",
+  USERS: "https://docs.google.com/spreadsheets/d/1HfDubrlG9a2kM89GK4BRQ5hZI_X3oE4RYn86dT1fZmA/gviz/tq?tqx=out:csv&gid=658369520",
 };
 
-const LS = { SESSION:"orders_vip_session_v1", CACHE:"orders_vip_cache_v1" };
-const AUTO_REFRESH_MS = 30000;
-const CACHE_TTL_MS = 60*1000;
+/** ====== APP SETTINGS ====== **/
+const APP = {
+  whatsappNumber: "",  // اختياري: ضع رقم واتساب بشكل دولي بدون + (مثال: 201229202030)
+  autoRefreshMs: 30000,
+  maxSearchResults: 50,
+};
 
-const $ = (id)=>document.getElementById(id);
-const loginView=$("loginView"), appView=$("appView"), loading=$("loading"), loadingSub=$("loadingSub"), banner=$("banner");
-const btnLogin=$("btnLogin"), btnRefreshTop=$("btnRefreshTop"), chipAll=$("chipAll"), chipReady=$("chipReady"), statsPill=$("statsPill");
-const qClients=$("qClients"), qSearch=$("qSearch"), listClients=$("listClients"), emptyClients=$("emptyClients"), listSearch=$("listSearch"), modelsWrap=$("modelsWrap");
-const drawer=$("drawer"), btnClose=$("btnClose"), dClient=$("dClient"), dMeta=$("dMeta"), kReq=$("kReq"), kDel=$("kDel"), kRem=$("kRem"), kStatus=$("kStatus");
-const mCount=$("mCount"), mTable=$("mTable"), btnCopyRows=$("btnCopyRows"), btnWhats=$("btnWhats"), copyHint=$("copyHint");
+/** ====== DOM HELPERS ====== **/
+const $ = (id) => document.getElementById(id);
 
-let READY_ONLY=false, AUTO_T=null;
-let DATA={ stockSet:new Set(), stockQty:new Map(), ordersByClientModel:new Map(), invoicesByClient:new Map(), totalRequiredByClient:new Map(), deliveredByClientModel:new Map(), totalDeliveredByClient:new Map() };
-let DASHBOARD=[], CURRENT_CLIENT=null, CURRENT_MODELS=[], DELIVERY_DRAFT=new Map();
-
-function norm(v){return String(v??"").trim();}
-function toNum(v){const n=Number(v);return isNaN(n)?0:n;}
-function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;");}
-function showLoading(on, sub){ if(sub) loadingSub.textContent=sub; loading.classList.toggle("hide", !on); }
-function showBanner(msg){ if(!msg){ banner.classList.add("hide"); banner.textContent=""; return;} banner.textContent=msg; banner.classList.remove("hide"); }
-function setTab(tab){
-  document.querySelectorAll(".seg__btn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
-  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-  $("tab-"+tab).classList.add("active");
+function esc(s){
+  return String(s ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
 }
-function setReady(ready){ READY_ONLY=!!ready; chipAll.classList.toggle("active", !READY_ONLY); chipReady.classList.toggle("active", READY_ONLY); renderDashboard(); }
+function unesc(s){
+  return String(s||"")
+    .replace(/&amp;/g,"&").replace(/&lt;/g,"<")
+    .replace(/&gt;/g,">").replace(/&quot;/g,'"')
+    .replace(/&#39;/g,"'");
+}
+function norm(v){ return String(v ?? "").trim(); }
+function toNum(v){
+  const n = Number(String(v ?? "").toString().replace(/[^\d.-]/g,""));
+  return isNaN(n) ? 0 : n;
+}
+function todayStr(){
+  const d = new Date();
+  const pad = (x)=> String(x).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 
-function splitCSVLine(line){
-  const out=[]; let cur=""; let q=false;
-  for(let i=0;i<line.length;i++){
-    const ch=line[i];
-    if(ch==='"'){ if(q && line[i+1]==='"'){cur+='"'; i++;} else q=!q; }
-    else if(ch===',' && !q){ out.push(cur); cur=""; }
-    else cur+=ch;
+/** ====== UI STATUS / LOADING ====== **/
+function setLoading(on){
+  const box = $("loadingBox");
+  if(!box) return;
+  box.classList.toggle("hide", !on);
+}
+function showFatalError(msg, details){
+  // يضمن ألا تكون الصفحة بيضاء: نعرض رسالة واضحة داخل cards
+  const cards = $("cards");
+  const dash = $("dash");
+  const loginBox = $("loginBox");
+  if(loginBox) loginBox.classList.add("hide");
+  if(dash) dash.classList.remove("hide");
+
+  if(cards){
+    cards.innerHTML = `
+      <div class="card red">
+        <b>حدث خطأ في تحميل البيانات</b>
+        <div style="margin-top:8px;font-size:14px;line-height:1.6">
+          ${esc(msg || "غير معروف")}
+        </div>
+        <div style="margin-top:8px;font-size:12px;opacity:.8">
+          ${esc(details || "")}
+        </div>
+        <div style="margin-top:10px">
+          <button class="nav-btn" style="width:100%" onclick="location.reload()">🔄 إعادة المحاولة</button>
+        </div>
+      </div>
+    `;
   }
-  out.push(cur); return out;
 }
-function parseCSV(csvText){
-  const lines=String(csvText||"").split(/\r?\n/).filter(l=>l.trim().length);
-  if(!lines.length) return [];
-  const headers=splitCSVLine(lines[0]).map(h=>norm(h));
-  const rows=[];
-  for(let i=1;i<lines.length;i++){
-    const cols=splitCSVLine(lines[i]);
-    const obj={};
-    for(let c=0;c<headers.length;c++) obj[headers[c]]=(cols[c]??"");
-    rows.push(obj);
+
+/** ====== CSV PARSER (ROBUST) ====== **/
+function parseCSV(text){
+  // CSV parser يدعم الفواصل والاقتباس
+  const rows = [];
+  let row = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+
+    if(ch === '"'){
+      if(inQuotes && text[i+1] === '"'){ // escaped quote
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if(!inQuotes && (ch === ',' || ch === '\n' || ch === '\r')){
+      if(ch === '\r') continue;
+      row.push(cur);
+      cur = "";
+      if(ch === '\n'){
+        // ignore trailing empty row
+        const isAllEmpty = row.every(c => String(c).trim()==="");
+        if(!isAllEmpty) rows.push(row);
+        row = [];
+      }
+      continue;
+    }
+
+    cur += ch;
+  }
+
+  // last cell
+  row.push(cur);
+  const isAllEmpty = row.every(c => String(c).trim()==="");
+  if(!isAllEmpty) rows.push(row);
+
+  return rows;
+}
+
+/** ====== FETCH CSV WITH NO-CACHE ====== **/
+async function fetchCSV(url){
+  const u = url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+  const resp = await fetch(u, { cache: "no-store" });
+  if(!resp.ok){
+    throw new Error(`فشل تحميل CSV (${resp.status})`);
+  }
+  const text = await resp.text();
+  const rows = parseCSV(text);
+  if(!rows || rows.length === 0){
+    throw new Error("CSV فارغ أو غير صالح");
   }
   return rows;
 }
-async function fetchCSV(url){
-  const r=await fetch(url,{cache:"no-store"});
-  if(!r.ok) throw new Error("HTTP "+r.status);
-  return await r.text();
+
+/** ====== HEADER DETECT ====== **/
+function headerMap(headers){
+  const map = {};
+  headers.forEach((h,i)=>{
+    const k = norm(h);
+    if(k) map[k] = i;
+  });
+  return map;
+}
+function findCol(hmap, candidates){
+  for(const c of candidates){
+    if(Object.prototype.hasOwnProperty.call(hmap, c)) return hmap[c];
+  }
+  return -1;
+}
+function colOr(idx, key, fallback){
+  const v = idx[key];
+  return (typeof v === "number" && v >= 0) ? v : fallback;
 }
 
-const CANDS={
-  ORDER:{invoice:["رقم الفاتورة","الفاتورة","رقم"],date:["التاريخ","تاريخ"],client:["اسم العميل","العميل","اسم الزبون","الزبون"],model:["الموديل","رقم الموديل","رمز الصنف","كود الصنف","الصنف"],qty:["الكمية المطلوبة","الكمية","كمية","المطلوب"]},
-  OUT:{invoice:["رقم الفاتورة","الفاتورة","رقم"],date:["التاريخ","تاريخ"],client:["اسم العميل","العميل","اسم الزبون","الزبون"],model:["الموديل","رقم الموديل","رمز الصنف","كود الصنف","الصنف"],qty:["الكميه المسلمه","الكمية المسلمة","الكمية","كمية","المسلم"]},
-  STOCK:{model:["الموديل","رقم الموديل","رمز الصنف","كود الصنف","الصنف"],qty:["الكميه","الكمية","كمية","المخزون","متاح"]},
-  USER:{user:["اسم المستخدم","يوزر","User","Username"],pass:["كلمة المرور","باسورد","Pass","Password"],role:["الصلاحية","دور","Role","الوظيفة"]}
+/** ====== COLUMN CANDIDATES (AR) ====== **/
+const ORDER_COLS = {
+  invoice: ["رقم الفاتورة","الفاتورة","رقم"],
+  date: ["التاريخ","تاريخ"],
+  client: ["اسم العميل","العميل","اسم الزبون","الزبون"],
+  model: ["الموديل","رقم الموديل","رمز الصنف","كود الصنف","الصنف"],
+  qty: ["الكمية المطلوبة","الكمية","كمية","المطلوب"],
 };
-function pickCol(headers, candidates, fallback){ for(const c of candidates){ const i=headers.indexOf(c); if(i>=0) return i; } return fallback; }
-function mapRowsToMatrix(rows){ if(!rows.length) return {headers:[], matrix:[]}; const headers=Object.keys(rows[0]); return {headers, matrix: rows.map(r=>headers.map(h=>r[h]))}; }
 
-function saveCache(payload){ try{localStorage.setItem(LS.CACHE, JSON.stringify({ts:Date.now(), payload}));}catch(e){} }
-function loadCache(){ try{return JSON.parse(localStorage.getItem(LS.CACHE)||"null");}catch(e){return null;} }
-function saveSession(s){ try{localStorage.setItem(LS.SESSION, JSON.stringify(s));}catch(e){} }
-function loadSession(){ try{return JSON.parse(localStorage.getItem(LS.SESSION)||"null");}catch(e){return null;} }
+const OUT_COLS = {
+  invoice: ["رقم الفاتورة","الفاتورة","رقم"],
+  date: ["التاريخ","تاريخ"],
+  client: ["اسم العميل","العميل","اسم الزبون","الزبون"],
+  model: ["الموديل","رقم الموديل","رمز الصنف","كود الصنف","الصنف"],
+  qty: ["الكميه المسلمه","الكمية المسلمة","الكمية","كمية","المسلم"],
+};
 
-async function loadAll(force){
-  showBanner(null);
-  showLoading(true, "تحميل البيانات…");
-  const now=Date.now();
-  if(!force){
-    const c=loadCache();
-    if(c && (now-c.ts)<CACHE_TTL_MS){
-      hydrate(c.payload); computeDashboard(); showLoading(false); renderDashboard(); renderSearch(); return;
-    }
-  }
+const STOCK_COLS = {
+  model: ["الموديل","رقم الموديل","رمز الصنف","كود الصنف","الصنف"],
+  name: ["اسم الموديل","اسم الصنف","الصنف"],
+  qty: ["الكميه","الكمية","كمية","المخزون","متاح"],
+};
+
+const USER_COLS = {
+  user: ["اسم المستخدم","يوزر","User","Username"],
+  pass: ["كلمة المرور","باسورد","Pass","Password"],
+  role: ["الصلاحية","دور","Role","الوظيفة"],
+};
+
+/** ====== APP STATE ====== **/
+let readyFilter = false;
+let autoTimer = null;
+
+const STATE = {
+  users: [],
+  stock: null,
+  orders: null,
+  out: null,
+  loggedIn: false,
+  role: "",
+};
+
+/** ====== LOAD ALL DATA ====== **/
+async function loadAll(){
   try{
-    loadingSub.textContent="تحميل المستخدمين…"; const users=parseCSV(await fetchCSV(CSV.USERS));
-    loadingSub.textContent="تحميل المخزون…"; const stock=parseCSV(await fetchCSV(CSV.STOCK));
-    loadingSub.textContent="تحميل الطلبيات…"; const orders=parseCSV(await fetchCSV(CSV.ORDERS));
-    loadingSub.textContent="تحميل الصادر…"; const out=parseCSV(await fetchCSV(CSV.OUT));
-    const payload={users,stock,orders,out};
-    saveCache(payload);
-    hydrate(payload);
-    computeDashboard();
-    showLoading(false);
-    renderDashboard(); renderSearch(); renderModelsByPrefix();
-  }catch(e){
-    showLoading(false);
-    showBanner("تعذر تحميل البيانات.\n\n- تأكد Publish to web\n- تأكد روابط CSV\n\nالخطأ: "+(e?.message||e));
+    // parallel load
+    const [usersRows, stockRows, ordersRows, outRows] = await Promise.all([
+      fetchCSV(CSV.USERS),
+      fetchCSV(CSV.STOCK),
+      fetchCSV(CSV.ORDERS),
+      fetchCSV(CSV.OUT),
+    ]);
+
+    STATE.users = buildUsers(usersRows);
+    STATE.stock = buildStock(stockRows);
+    STATE.orders = buildOrders(ordersRows);
+    STATE.out = buildOut(outRows);
+
+  } catch(e){
+    showFatalError(
+      "تأكد أن الشيتات الأربعة منشورة على الويب (Publish to web) وأن روابط CSV تعمل بدون تسجيل دخول.",
+      (e && e.message) ? e.message : String(e)
+    );
+    throw e;
   }
 }
 
-function hydrate(payload){
-  window.__USERS__=payload.users||[];
+/** ====== BUILDERS ====== **/
+function buildUsers(rows){
+  const hdr = rows[0].map(norm);
+  const hmap = headerMap(hdr);
+  const idx = {
+    user: findCol(hmap, USER_COLS.user),
+    pass: findCol(hmap, USER_COLS.pass),
+    role: findCol(hmap, USER_COLS.role),
+  };
 
-  // STOCK
-  const {headers:sh, matrix:sm}=mapRowsToMatrix(payload.stock||[]);
-  const cModel=pickCol(sh, CANDS.STOCK.model, 0);
-  const cQty=pickCol(sh, CANDS.STOCK.qty, 2);
-  const stockSet=new Set(); const stockQty=new Map();
-  for(const r of sm){
-    const model=norm(r[cModel]); if(!model) continue;
-    stockSet.add(model);
-    stockQty.set(model, (stockQty.get(model)||0) + (toNum(r[cQty])||0));
+  const cUser = colOr(idx, "user", 0);
+  const cPass = colOr(idx, "pass", 1);
+  const cRole = colOr(idx, "role", 2);
+
+  const data = rows.slice(1);
+  const users = [];
+
+  for(const r of data){
+    const u = norm(r[cUser]);
+    const p = norm(r[cPass]);
+    if(!u || !p) continue;
+    users.push({
+      user: u,
+      pass: p,
+      role: norm(r[cRole]),
+    });
   }
+  return users;
+}
 
-  // ORDERS
-  const {headers:oh, matrix:om}=mapRowsToMatrix(payload.orders||[]);
-  const oInv=pickCol(oh,CANDS.ORDER.invoice,0);
-  const oClient=pickCol(oh,CANDS.ORDER.client,2);
-  const oModel=pickCol(oh,CANDS.ORDER.model,3);
-  const oQty=pickCol(oh,CANDS.ORDER.qty,4);
+function buildStock(rows){
+  const hdr = rows[0].map(norm);
+  const hmap = headerMap(hdr);
+  const idx = {
+    model: findCol(hmap, STOCK_COLS.model),
+    qty: findCol(hmap, STOCK_COLS.qty),
+  };
+  const cModel = colOr(idx, "model", 0);
+  const cQty = colOr(idx, "qty", 2);
 
-  const ordersByClientModel=new Map(), invoicesByClient=new Map(), totalRequiredByClient=new Map();
-  for(const r of om){
-    const client=norm(r[oClient]), model=norm(r[oModel]), qty=toNum(r[oQty]), invoice=norm(r[oInv]);
-    if(!client||!model||qty<=0) continue;
+  const data = rows.slice(1);
+  const stockSet = new Set();
+  const stockQty = new Map();
+
+  for(const r of data){
+    const model = norm(r[cModel]);
+    if(!model) continue;
+    stockSet.add(model);
+    const q = toNum(r[cQty]);
+    stockQty.set(model, (stockQty.get(model) || 0) + (q || 0));
+  }
+  return { stockSet, stockQty };
+}
+
+function buildOrders(rows){
+  const hdr = rows[0].map(norm);
+  const hmap = headerMap(hdr);
+  const idx = {
+    invoice: findCol(hmap, ORDER_COLS.invoice),
+    date: findCol(hmap, ORDER_COLS.date),
+    client: findCol(hmap, ORDER_COLS.client),
+    model: findCol(hmap, ORDER_COLS.model),
+    qty: findCol(hmap, ORDER_COLS.qty),
+  };
+
+  const cInv = colOr(idx, "invoice", 0);
+  const cDate = colOr(idx, "date", 1);
+  const cClient = colOr(idx, "client", 2);
+  const cModel = colOr(idx, "model", 3);
+  const cQty = colOr(idx, "qty", 4);
+
+  const data = rows.slice(1);
+
+  const ordersByClientModel = new Map();
+  const invoicesByClient = new Map();
+  const totalRequiredByClient = new Map();
+
+  for(const r of data){
+    const client = norm(r[cClient]);
+    const model = norm(r[cModel]);
+    const qty = toNum(r[cQty]);
+    const invoice = norm(r[cInv]);
+
+    if(!client || !model || qty <= 0) continue;
+
     if(!ordersByClientModel.has(client)) ordersByClientModel.set(client, new Map());
-    const mm=ordersByClientModel.get(client);
-    mm.set(model,(mm.get(model)||0)+qty);
-    totalRequiredByClient.set(client,(totalRequiredByClient.get(client)||0)+qty);
+    const mm = ordersByClientModel.get(client);
+    mm.set(model, (mm.get(model) || 0) + qty);
+
+    totalRequiredByClient.set(client, (totalRequiredByClient.get(client) || 0) + qty);
+
     if(invoice){
-      if(!invoicesByClient.has(client)) invoicesByClient.set(client,new Set());
+      if(!invoicesByClient.has(client)) invoicesByClient.set(client, new Set());
       invoicesByClient.get(client).add(invoice);
     }
   }
 
-  // OUT
-  const {headers:uh, matrix:um}=mapRowsToMatrix(payload.out||[]);
-  const uClient=pickCol(uh,CANDS.OUT.client,2);
-  const uModel=pickCol(uh,CANDS.OUT.model,3);
-  const uQty=pickCol(uh,CANDS.OUT.qty,4);
-
-  const deliveredByClientModel=new Map(), totalDeliveredByClient=new Map();
-  for(const r of um){
-    const client=norm(r[uClient]), model=norm(r[uModel]), qty=toNum(r[uQty]);
-    if(!client||!model||qty<=0) continue;
-    if(!deliveredByClientModel.has(client)) deliveredByClientModel.set(client,new Map());
-    const mm=deliveredByClientModel.get(client);
-    mm.set(model,(mm.get(model)||0)+qty);
-    totalDeliveredByClient.set(client,(totalDeliveredByClient.get(client)||0)+qty);
-  }
-
-  DATA={stockSet,stockQty,ordersByClientModel,invoicesByClient,totalRequiredByClient,deliveredByClientModel,totalDeliveredByClient};
+  return { ordersByClientModel, invoicesByClient, totalRequiredByClient };
 }
 
-function computeDashboard(){
-  const res=[];
-  DATA.ordersByClientModel.forEach((modelsMap, client)=>{
-    const requiredAll=DATA.totalRequiredByClient.get(client)||0;
-    const deliveredAll=DATA.totalDeliveredByClient.get(client)||0;
-    const remainingAll=Math.max(0, requiredAll-deliveredAll);
-    let readyRequired=0, readyDelivered=0, readyRemaining=0; const readyModels=[];
+function buildOut(rows){
+  const hdr = rows[0].map(norm);
+  const hmap = headerMap(hdr);
+  const idx = {
+    client: findCol(hmap, OUT_COLS.client),
+    model: findCol(hmap, OUT_COLS.model),
+    qty: findCol(hmap, OUT_COLS.qty),
+  };
+  const cClient = colOr(idx, "client", 2);
+  const cModel = colOr(idx, "model", 3);
+  const cQty = colOr(idx, "qty", 4);
+
+  const data = rows.slice(1);
+
+  const deliveredByClientModel = new Map();
+  const totalDeliveredByClient = new Map();
+
+  for(const r of data){
+    const client = norm(r[cClient]);
+    const model = norm(r[cModel]);
+    const qty = toNum(r[cQty]);
+    if(!client || !model || qty <= 0) continue;
+
+    if(!deliveredByClientModel.has(client)) deliveredByClientModel.set(client, new Map());
+    const mm = deliveredByClientModel.get(client);
+    mm.set(model, (mm.get(model) || 0) + qty);
+
+    totalDeliveredByClient.set(client, (totalDeliveredByClient.get(client) || 0) + qty);
+  }
+
+  return { deliveredByClientModel, totalDeliveredByClient };
+}
+
+/** ====== BUSINESS LOGIC ====== **/
+function computeDashboardClients(readyOnly){
+  const { stockSet, stockQty } = STATE.stock;
+  const { ordersByClientModel, invoicesByClient, totalRequiredByClient } = STATE.orders;
+  const { deliveredByClientModel, totalDeliveredByClient } = STATE.out;
+
+  const result = [];
+
+  ordersByClientModel.forEach((modelsMap, client)=>{
+    const requiredAll = totalRequiredByClient.get(client) || 0;
+    const deliveredAll = totalDeliveredByClient.get(client) || 0;
+    const remainingAll = Math.max(0, requiredAll - deliveredAll);
+
+    let readyRequired = 0;
+    let readyDelivered = 0;
+    let readyRemaining = 0;
+    const readyModels = [];
+
     modelsMap.forEach((req, model)=>{
-      const del=(DATA.deliveredByClientModel.get(client)?.get(model))||0;
-      const rem=Math.max(0, req-del);
-      if(rem<=0) return;
-      const inStock=DATA.stockSet.has(model);
-      const qtyInStock=DATA.stockQty.get(model)||0;
-      if(inStock && qtyInStock>0){
-        readyRequired+=req; readyDelivered+=del; readyRemaining+=rem; readyModels.push(model);
+      const del = (deliveredByClientModel.get(client)?.get(model)) || 0;
+      const rem = Math.max(0, req - del);
+      if(rem <= 0) return;
+
+      const inStock = stockSet.has(model);
+      const qtyInStock = (stockQty.get(model) || 0);
+      const ok = inStock && qtyInStock > 0;
+
+      if(ok){
+        readyRequired += req;
+        readyDelivered += del;
+        readyRemaining += rem;
+        readyModels.push(model);
       }
     });
-    const invoices=Array.from(DATA.invoicesByClient.get(client)||[]).join(", ");
-    const statusAll = deliveredAll===0?"لم يبدأ":(remainingAll>0?"جزئي":"مكتمل");
-    const statusReady= readyDelivered===0?"لم يبدأ":(readyRemaining>0?"جزئي":"مكتمل");
-    res.push({client,requiredAll,deliveredAll,remainingAll,statusAll,readyRequired,readyDelivered,readyRemaining,statusReady,invoices,readyModels});
+
+    if(readyOnly){
+      if(readyModels.length === 0) return;
+
+      const status =
+        readyDelivered === 0 ? "لم يبدأ" :
+        (readyRemaining > 0 ? "جزئي" : "مكتمل");
+
+      result.push({
+        client,
+        required: readyRequired,
+        delivered: readyDelivered,
+        remaining: readyRemaining,
+        status,
+        invoices: Array.from(invoicesByClient.get(client) || []).join(", "),
+        readyModels
+      });
+    } else {
+      const status =
+        deliveredAll === 0 ? "لم يبدأ" :
+        (remainingAll > 0 ? "جزئي" : "مكتمل");
+
+      result.push({
+        client,
+        required: requiredAll,
+        delivered: deliveredAll,
+        remaining: remainingAll,
+        status,
+        invoices: Array.from(invoicesByClient.get(client) || []).join(", "),
+        readyModels
+      });
+    }
   });
-  res.sort((a,b)=>(b.remainingAll||0)-(a.remainingAll||0));
-  DASHBOARD=res;
-}
 
-function statusBadge(status){
-  if(status==="مكتمل") return '<span class="badge ok">مكتمل</span>';
-  if(status==="جزئي") return '<span class="badge warn">جزئي</span>';
-  return '<span class="badge bad">لم يبدأ</span>';
-}
-
-function renderDashboard(){
-  const q=norm(qClients.value).toLowerCase();
-  const list=DASHBOARD.filter(x=>{
-    if(READY_ONLY){ if((x.readyModels||[]).length===0 || x.readyRemaining<=0) return false; }
-    if(!q) return true;
-    return norm(x.client).toLowerCase().includes(q);
-  });
-
-  const sumRem=list.reduce((a,x)=>a+(READY_ONLY?(x.readyRemaining||0):(x.remainingAll||0)),0);
-  statsPill.textContent = list.length + " عميل • متبقي " + sumRem;
-
-  listClients.innerHTML="";
-  emptyClients.classList.toggle("hide", list.length!==0);
-
-  for(const c of list){
-    const status=READY_ONLY?c.statusReady:c.statusAll;
-    const req=READY_ONLY?c.readyRequired:c.requiredAll;
-    const del=READY_ONLY?c.readyDelivered:c.deliveredAll;
-    const rem=READY_ONLY?c.readyRemaining:c.remainingAll;
-    listClients.insertAdjacentHTML("beforeend", `
-      <div class="item" data-client="${esc(c.client)}">
-        <div class="item__top">
-          <div>
-            <div class="item__name">${esc(c.client)}</div>
-            <div class="item__meta">المطلوب ${req} • المسلم ${del} • المتبقي ${rem}</div>
-          </div>
-          ${statusBadge(status)}
-        </div>
-        <div class="kv">
-          <span class="pill">${c.invoices?("فواتير: "+esc(c.invoices)):"بدون فواتير"}</span>
-          ${READY_ONLY?`<span class="pill">جاهز: ${esc((c.readyModels||[]).slice(0,4).join("، "))}${(c.readyModels||[]).length>4?"…":""}</span>`:""}
-        </div>
-      </div>
-    `);
-  }
-  listClients.querySelectorAll(".item").forEach(el=> el.onclick=()=>openClient(el.getAttribute("data-client")));
-}
-
-function renderSearch(){
-  const q=norm(qSearch.value).toLowerCase();
-  listSearch.innerHTML="";
-  if(!q) return;
-  const readyClients=DASHBOARD.filter(x=>(x.readyModels||[]).length>0 && x.readyRemaining>0).map(x=>x.client);
-  const hits=readyClients.filter(n=>norm(n).toLowerCase().includes(q)).slice(0,50);
-  if(!hits.length){ listSearch.innerHTML='<div class="item"><div class="item__name">لا توجد نتائج</div></div>'; return; }
-  for(const name of hits){
-    listSearch.insertAdjacentHTML("beforeend", `<div class="item" data-client="${esc(name)}"><div class="item__top"><div class="item__name">${esc(name)}</div><span class="badge ok">جاهز</span></div></div>`);
-  }
-  listSearch.querySelectorAll(".item").forEach(el=> el.onclick=()=>openClient(el.getAttribute("data-client")));
+  return result.sort((a,b)=> (b.remaining||0) - (a.remaining||0));
 }
 
 function computeClientModels(client, readyOnly){
-  const modelsMap=DATA.ordersByClientModel.get(client);
+  const c = norm(client);
+  if(!c) return [];
+
+  const { stockSet, stockQty } = STATE.stock;
+  const { ordersByClientModel } = STATE.orders;
+  const { deliveredByClientModel } = STATE.out;
+
+  const modelsMap = ordersByClientModel.get(c);
   if(!modelsMap) return [];
-  const res=[];
+
+  const res = [];
   modelsMap.forEach((req, model)=>{
-    const del=(DATA.deliveredByClientModel.get(client)?.get(model))||0;
-    const rem=Math.max(0, req-del);
-    if(rem<=0) return;
+    const del = (deliveredByClientModel.get(c)?.get(model)) || 0;
+    const rem = Math.max(0, req - del);
+    if(rem <= 0) return;
+
     if(readyOnly){
-      const inStock=DATA.stockSet.has(model);
-      const qtyInStock=DATA.stockQty.get(model)||0;
-      if(!inStock||qtyInStock<=0) return;
+      const inStock = stockSet.has(model);
+      const qtyInStock = (stockQty.get(model) || 0);
+      if(!inStock || qtyInStock <= 0) return;
     }
-    res.push({model,required:req,delivered:del,remaining:rem});
+
+    res.push({ model, required: req, delivered: del, remaining: rem });
   });
-  res.sort((a,b)=>(b.remaining||0)-(a.remaining||0));
-  return res;
+
+  return res.sort((a,b)=> (b.remaining||0) - (a.remaining||0));
 }
 
-function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
-
-function openClient(clientName){
-  const client=norm(clientName);
-  const c=DASHBOARD.find(x=>norm(x.client)===client);
-  if(!c) return;
-  CURRENT_CLIENT=client;
-  DELIVERY_DRAFT=new Map();
-
-  const status=READY_ONLY?c.statusReady:c.statusAll;
-  const req=READY_ONLY?c.readyRequired:c.requiredAll;
-  const del=READY_ONLY?c.readyDelivered:c.deliveredAll;
-  const rem=READY_ONLY?c.readyRemaining:c.remainingAll;
-
-  dClient.textContent=client;
-  dMeta.textContent=c.invoices?("فواتير: "+c.invoices):"بدون فواتير";
-  kReq.textContent=req; kDel.textContent=del; kRem.textContent=rem; kStatus.textContent=status;
-
-  CURRENT_MODELS=computeClientModels(client, READY_ONLY);
-  mCount.textContent=CURRENT_MODELS.length+" موديل";
-  renderClientModelsTable();
-  copyHint.textContent="";
-  drawer.classList.remove("hide");
+function searchReadyClients(keyword){
+  const k = norm(keyword).toLowerCase();
+  if(!k) return [];
+  const readyClients = computeDashboardClients(true).map(x=> x.client);
+  return readyClients
+    .filter(n => norm(n).toLowerCase().includes(k))
+    .slice(0, APP.maxSearchResults);
 }
 
-function renderClientModelsTable(){
-  if(!CURRENT_MODELS.length){ mTable.innerHTML='<div class="muted">لا يوجد موديلات متبقية</div>'; return; }
-  let html='<div class="table"><div class="trow head"><div>موديل</div><div>مطلوب</div><div>متبقي</div><div>تسليم</div></div>';
-  for(const m of CURRENT_MODELS){
-    const v=DELIVERY_DRAFT.get(m.model)||0;
-    html += `
-      <div class="trow">
-        <div class="strong">${esc(m.model)}</div>
-        <div>${esc(m.required)}</div>
-        <div>${esc(m.remaining)}</div>
-        <div class="qty">
-          <button class="qbtn" data-m="${esc(m.model)}" data-d="-1">−</button>
-          <input class="qin" data-i="${esc(m.model)}" value="${esc(v||"")}" inputmode="numeric" placeholder="0" />
-          <button class="qbtn" data-m="${esc(m.model)}" data-d="1">+</button>
-        </div>
-      </div>`;
+/** ====== LOGIN ====== **/
+function doLogin(){
+  const user = $("user").value;
+  const pass = $("pass").value;
+
+  $("loginBtn").disabled = true;
+
+  const u = norm(user), p = norm(pass);
+  if(!u || !p){
+    $("loginBtn").disabled = false;
+    alert("اكتب اسم المستخدم وكلمة المرور");
+    return;
   }
-  html += "</div>";
-  mTable.innerHTML=html;
 
-  mTable.querySelectorAll(".qbtn").forEach(btn=>{
-    btn.onclick=()=>{
-      const model=btn.getAttribute("data-m");
-      const dir=Number(btn.getAttribute("data-d"))||0;
-      const m=CURRENT_MODELS.find(x=>String(x.model)===String(model));
-      if(!m) return;
-      const cur=DELIVERY_DRAFT.get(model)||0;
-      const next=clamp(cur+dir,0,m.remaining);
-      if(next<=0) DELIVERY_DRAFT.delete(model); else DELIVERY_DRAFT.set(model,next);
-      renderClientModelsTable();
-    };
-  });
-  mTable.querySelectorAll(".qin").forEach(inp=>{
-    inp.onchange=()=>{
-      const model=inp.getAttribute("data-i");
-      const m=CURRENT_MODELS.find(x=>String(x.model)===String(model));
-      if(!m) return;
-      const v=clamp(toNum(inp.value),0,m.remaining);
-      if(v<=0) DELIVERY_DRAFT.delete(model); else DELIVERY_DRAFT.set(model,v);
-      renderClientModelsTable();
-    };
-  });
-}
+  const found = STATE.users.find(x => x.user === u && x.pass === p);
+  $("loginBtn").disabled = false;
 
-function formatDT(d){ try{return new Date(d).toLocaleString("ar-EG");}catch{return String(d);} }
-
-function buildOutRowsText(){
-  if(!CURRENT_CLIENT) return "";
-  const now=new Date();
-  const rows=[];
-  DELIVERY_DRAFT.forEach((qty, model)=>{
-    if(qty<=0) return;
-    rows.push(["تسليم", formatDT(now), CURRENT_CLIENT, model, qty].join("\t"));
-  });
-  return rows.join("\n");
-}
-
-function buildWhatsText(){
-  const now=new Date();
-  const lines=[];
-  DELIVERY_DRAFT.forEach((qty, model)=>{ if(qty>0) lines.push("▫️ "+model+" — "+qty+" قطعة"); });
-  const total=Array.from(DELIVERY_DRAFT.values()).reduce((a,b)=>a+(b||0),0);
-  return ["🚚 *تسليم - متابعة الطلبات*","👤 العميل: *"+CURRENT_CLIENT+"*","🗓️ "+formatDT(now),"— — —","📦 التفاصيل:",(lines.join("\n")||"لا يوجد"),"— — —","✅ إجمالي القطع: "+total].join("\n");
-}
-
-async function copyText(txt){
-  try{ await navigator.clipboard.writeText(txt); return true; }
-  catch{ try{ window.prompt("انسخ النص يدويًا:", txt); }catch{} return false; }
-}
-
-function closeDrawer(){ drawer.classList.add("hide"); }
-
-btnClose.onclick=closeDrawer;
-drawer.addEventListener("click",(e)=>{ if(e.target===drawer) closeDrawer(); });
-
-btnCopyRows.onclick=async()=>{
-  if(!DELIVERY_DRAFT.size) return alert("حدد كميات للتسليم أولاً");
-  const ok=await copyText(buildOutRowsText());
-  copyHint.textContent = ok ? "✅ تم النسخ. الصق في شيت “الصادر”." : "ℹ️ تم عرض النص للنسخ اليدوي.";
-};
-
-btnWhats.onclick=()=>{
-  if(!DELIVERY_DRAFT.size) return alert("حدد كميات للتسليم أولاً");
-  window.open("https://wa.me/?text="+encodeURIComponent(buildWhatsText()), "_blank");
-};
-
-// Login (client-side)
-function login(username, password){
-  const u=norm(username), p=norm(password);
-  if(!u||!p) return {ok:false};
-  const users=(window.__USERS__||[]);
-  if(!users.length) return {ok:false, error:"لا يوجد USERS"};
-  const keys=Object.keys(users[0]||{});
-  const cu=pickCol(keys, CANDS.USER.user, 0);
-  const cp=pickCol(keys, CANDS.USER.pass, 1);
-  const cr=pickCol(keys, CANDS.USER.role, 2);
-  for(const r of users){
-    const vals=keys.map(k=>r[k]);
-    if(norm(vals[cu])===u && norm(vals[cp])===p) return {ok:true, role:norm(vals[cr])};
+  if(!found){
+    alert("بيانات غير صحيحة");
+    return;
   }
-  return {ok:false};
+
+  STATE.loggedIn = true;
+  STATE.role = found.role || "";
+
+  $("loginBox").classList.add("hide");
+  $("dash").classList.remove("hide");
+
+  setReadyFilter(false);
+
+  // auto refresh only on clients section
+  if(autoTimer) clearInterval(autoTimer);
+  autoTimer = setInterval(async ()=>{
+    const clientsTabActive = $("clients").classList.contains("active");
+    if(clientsTabActive) await refreshNow(true);
+  }, APP.autoRefreshMs);
 }
 
-btnLogin.onclick=async()=>{
-  if(!(window.__USERS__ && window.__USERS__.length)) await loadAll(true);
-  const r=login($("u").value, $("p").value);
-  if(!r.ok) return alert("بيانات غير صحيحة");
-  saveSession({ok:true, role:r.role||""});
-  loginView.classList.add("hide");
-  appView.classList.remove("hide");
-  setReady(false);
-  renderModelsByPrefix();
-  if(AUTO_T) clearInterval(AUTO_T);
-  AUTO_T=setInterval(()=>loadAll(false), AUTO_REFRESH_MS);
-};
+/** ====== NAV / FILTER ====== **/
+function showSection(id,btn){
+  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
+  $(id).classList.add("active");
 
-document.addEventListener("keydown",(e)=>{ if(!appView.classList.contains("hide")) return; if(e.key==="Enter") btnLogin.click(); });
+  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
 
-btnRefreshTop.onclick=()=>loadAll(true);
-chipAll.onclick=()=>setReady(false);
-chipReady.onclick=()=>setReady(true);
+  if(id === "models") renderModelsPrefix();
+}
 
-qClients.oninput=renderDashboard;
-qSearch.oninput=renderSearch;
+async function setReadyFilter(val){
+  readyFilter = !!val;
+  $("btnAll").classList.toggle("active", !readyFilter);
+  $("btnReady").classList.toggle("active", readyFilter);
+  await loadDashboard(readyFilter);
+}
 
-document.querySelectorAll(".seg__btn").forEach(b=>{
-  b.onclick=()=>{
-    setTab(b.dataset.tab);
-    if(b.dataset.tab==="models") renderModelsByPrefix();
-    if(b.dataset.tab==="search") renderSearch();
-  };
-});
+async function refreshNow(silent){
+  await reloadDataIfNeeded();
+  await loadDashboard(readyFilter, !!silent);
+}
 
-function renderModelsByPrefix(){
-  const data={};
-  DATA.ordersByClientModel.forEach((modelsMap, client)=>{
-    modelsMap.forEach((qty, model)=>{
-      if(!model) return;
-      const num=Number(model);
-      const prefix=(!isNaN(num)&&num<1000)?String(model).substring(0,1):String(model).substring(0,2);
-      data[prefix]=data[prefix]||{};
-      data[prefix][model]=data[prefix][model]||{total:0,clients:[]};
-      data[prefix][model].total+=qty;
-      data[prefix][model].clients.push({client, qty});
+/** ====== LOAD / RELOAD DATA ====== **/
+let lastLoadAt = 0;
+async function reloadDataIfNeeded(){
+  // reload every refresh to keep latest
+  await loadAll();
+  lastLoadAt = Date.now();
+}
+
+/** ====== DASHBOARD RENDER ====== **/
+async function loadDashboard(ready, silent){
+  try{
+    if(!silent) setLoading(true);
+
+    $("statusLine").textContent = ready
+      ? "عرض: العملاء الجاهزين (متبقي غير مسلم + الموديل موجود بالمخزون)"
+      : "عرض: كل العملاء";
+
+    const data = computeDashboardClients(!!ready);
+
+    const cards = $("cards");
+    cards.innerHTML = "";
+
+    (data||[]).forEach(c=>{
+      const cls = (c.status==="مكتمل") ? "green" : (c.status==="جزئي") ? "orange" : "red";
+      const clientSafe = esc(c.client);
+      cards.innerHTML += `
+        <div class="card ${cls}">
+          <b style="cursor:pointer" onclick="showClient('${clientSafe}')">${clientSafe}</b>
+          <div>المطلوب ${esc(c.required)} | المسلم ${esc(c.delivered)} | المتبقي ${esc(c.remaining)}</div>
+        </div>`;
     });
-  });
-  const prefixes=Object.keys(data).sort((a,b)=>String(a).localeCompare(String(b),"ar"));
-  let html="";
-  for(const p of prefixes){
-    const arr=Object.entries(data[p]).map(([model,obj])=>({model,total:obj.total,clients:obj.clients})).sort((a,b)=>(b.total||0)-(a.total||0));
-    const sum=arr.reduce((a,b)=>a+(b.total||0),0);
-    let table='<div class="table"><div class="trow head"><div>موديل</div><div>المطلوب</div><div style="grid-column:span 2">تفصيل العملاء</div></div>';
-    for(const m of arr){
-      const clients=(m.clients||[]).map(c=>`${esc(c.client)} (${esc(c.qty)})`).join("<br>");
-      table+=`<div class="trow"><div>${esc(m.model)}</div><div>${esc(m.total)}</div><div style="grid-column:span 2;font-size:12px;color:var(--muted)">${clients}</div></div>`;
+
+    if((data||[]).length===0){
+      cards.innerHTML = `<div class="card">لا توجد بيانات للعرض</div>`;
     }
-    table+="</div>";
-    html+=`<div class="card" style="margin-bottom:10px"><div class="card__head"><div class="strong">بادئة ${esc(p)}</div><div class="pill">المجموع: ${esc(sum)}</div></div>${table}</div>`;
+
+  } catch(e){
+    showFatalError("تعذر عرض البيانات. تأكد من الروابط وصلاحية النشر.", e.message || String(e));
+  } finally {
+    if(!silent) setLoading(false);
   }
-  modelsWrap.innerHTML = html || '<div class="card"><div class="strong">لا توجد بيانات</div></div>';
 }
 
-(function init(){
-  const s=loadSession();
-  if(s && s.ok){ loginView.classList.add("hide"); appView.classList.remove("hide"); }
-  loadAll(false);
-})();
+/** ====== CLIENT VIEW ====== **/
+function showClient(clientEsc){
+  const client = unesc(clientEsc);
+  setLoading(true);
+
+  const models = computeClientModels(client, !!readyFilter);
+
+  let html = `<div class="card printable">
+    <h3>${esc(client)}</h3>
+    <div style="font-size:12px;opacity:.8;margin-top:6px">حدد كميات التسليم ثم انسخ سطور الصادر أو أرسل واتساب.</div>
+
+    <table>
+      <tr>
+        <th>موديل</th>
+        <th>المطلوب</th>
+        <th>المسلم</th>
+        <th>المتبقي</th>
+        <th>تسليم</th>
+        <th>+ / −</th>
+      </tr>`;
+
+  models.forEach(m=>{
+    if(Number(m.remaining) <= 0) return;
+    const max = Number(m.remaining);
+    const modelS = esc(m.model);
+    html += `
+      <tr>
+        <td>${modelS}</td>
+        <td>${esc(m.required)}</td>
+        <td>${esc(m.delivered)}</td>
+        <td>${esc(m.remaining)}</td>
+        <td>
+          <input type="number" min="0" max="${esc(max)}"
+            data-model="${modelS}"
+            value="0"
+            style="width:90px;padding:8px;border-radius:10px;border:1px solid #ccc;text-align:center;">
+        </td>
+        <td style="white-space:nowrap">
+          <button onclick="stepQty('${modelS}',1,${max})" style="padding:8px 10px;border:none;border-radius:10px;background:#e3f2fd;cursor:pointer">+</button>
+          <button onclick="stepQty('${modelS}',-1,${max})" style="padding:8px 10px;border:none;border-radius:10px;background:#fff3e0;cursor:pointer">-</button>
+        </td>
+      </tr>`;
+  });
+
+  html += `</table>
+
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button style="flex:1;min-width:150px;padding:12px;border:none;border-radius:14px;background:#2e7d32;color:#fff;font-weight:bold;cursor:pointer"
+        onclick="copyOutRows('${esc(client)}')">📋 نسخ سطور الصادر</button>
+
+      <button style="flex:1;min-width:150px;padding:12px;border:none;border-radius:14px;background:#1976d2;color:#fff;font-weight:bold;cursor:pointer"
+        onclick="sendWhatsApp('${esc(client)}')">💬 إرسال واتساب</button>
+
+      <button style="flex:1;min-width:150px;padding:12px;border:none;border-radius:14px;background:#455a64;color:#fff;font-weight:bold;cursor:pointer"
+        onclick="window.print()">🖨️ طباعة</button>
+    </div>
+
+    <div style="margin-top:10px">
+      <button style="width:100%;padding:12px;border:none;border-radius:14px;background:#e3f2fd;color:#0d47a1;font-weight:bold;cursor:pointer"
+        onclick="backToList()">⬅️ رجوع</button>
+    </div>
+
+    <div id="copyBox" class="card hide" style="margin-top:10px;background:#f7f7f7">
+      <b>انسخ والصق في شيت الصادر</b>
+      <textarea id="copyArea" style="width:100%;height:160px;margin-top:8px;border-radius:10px;padding:10px;border:1px solid #ccc;direction:rtl"></textarea>
+      <button style="width:100%;padding:12px;border:none;border-radius:14px;background:#2e7d32;color:#fff;font-weight:bold;cursor:pointer;margin-top:8px"
+        onclick="copyTextNow()">✅ نسخ الآن</button>
+      <div style="font-size:12px;opacity:.8;margin-top:6px">الصيغة: رقم الفاتورة, التاريخ, اسم العميل, الموديل, الكمية</div>
+    </div>
+
+  </div>`;
+
+  $("cards").innerHTML = html;
+
+  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
+  $("clients").classList.add("active");
+
+  setLoading(false);
+}
+
+function backToList(){
+  loadDashboard(readyFilter);
+}
+
+/** ====== QTY STEP ====== **/
+function stepQty(modelEsc, delta, max){
+  const model = unesc(modelEsc);
+  const inp = document.querySelector(`input[data-model="${CSS.escape(model)}"]`);
+  if(!inp) return;
+  const v = toNum(inp.value);
+  let nv = v + delta;
+  if(nv < 0) nv = 0;
+  if(nv > max) nv = max;
+  inp.value = nv;
+}
+
+/** ====== COLLECT SELECTED ITEMS ====== **/
+function getSelectedItems(){
+  const items = [];
+  document.querySelectorAll("input[data-model]").forEach(inp=>{
+    const qty = toNum(inp.value);
+    if(qty > 0){
+      items.push({ model: unesc(inp.getAttribute("data-model")), qty });
+    }
+  });
+  return items;
+}
+
+/** ====== COPY OUT ROWS (Paste to OUT sheet) ====== **/
+function co
