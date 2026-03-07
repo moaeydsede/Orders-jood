@@ -1,0 +1,9 @@
+{
+  "name": "VIP Orders Tracker",
+  "short_name": "VIP Orders",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d47a1",
+  "theme_color": "#0d47a1",
+  "icons": []
+}
