@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VIP Orders Tracker</title>
+  <meta name="theme-color" content="#0d47a1" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%230d47a1'/%3E%3Ctext x='96' y='116' font-size='92' text-anchor='middle'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./styles.css?v=5" />
+  <script defer src="./app.js?v=5"></script>
+</head>
+<body>
+  <div class="login-card" id="loginBox">
+    <div class="login-icon">📦</div>
+    <h3 id="appTitle">متابعة الطلبات</h3>
+
+    <input id="user" placeholder="اسم المستخدم" autocomplete="username" />
+    <input id="pass" type="password" placeholder="كلمة المرور" autocomplete="current-password" />
+    <button id="loginBtn" type="button">تسجيل الدخول</button>
+
+    <div class="mini-note">
+      إذا واجهت صفحة بيضاء سابقًا: هذا الإصدار يعرض سبب الخطأ داخل الصفحة.
+    </div>
+
+    <div id="bootStatus" class="boot-status"></div>
+  </div>
+
+  <div class="hide" id="dash">
+    <div class="header" id="headerTitle">
+      <div class="header-inner">
+        <div class="header-badge">📦 VIP</div>
+        <div class="header-text">
+          <div class="header-title">VIP Orders Tracker</div>
+          <div class="header-subtitle">لوحة متابعة احترافية ومهيأة للموبايل</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <div id="installBox" class="install-box hide">
+        <div>📲 تثبيت البرنامج على الموبايل</div>
+        <button id="installBtn" type="button" class="install-btn">تثبيت الآن</button>
+      </div>
+      <div class="nav-bar">
+        <button class="nav-btn active" id="navClients" type="button">👥 العملاء</button>
+        <button class="nav-btn" id="navSearch" type="button">🔍 البحث</button>
+        <button class="nav-btn" id="navModels" type="button">📦 الموديلات</button>
+      </div>
+
+      <div id="statusLine" class="hint"></div>
+
+      <div id="clients" class="section active">
+        <div class="toolbar">
+          <button id="btnAll" class="btn-all active" type="button">📋 كل العملاء</button>
+          <button id="btnReady" class="btn-ready" type="button">✅ العملاء الجاهزين</button>
+          <button id="btnRefresh" class="btn-refresh" type="button">🔄 تحديث الآن</button>
+        </div>
+
+        <div id="loadingBox" class="loading hide">⏳ جاري التحميل...</div>
+        <div id="cards"></div>
+      </div>
+
+      <div id="search" class="section">
+        <input id="searchInput" placeholder="ابحث باسم العميل..." />
+        <div id="searchResults"></div>
+      </div>
+
+      <div id="models" class="section">
+        <div id="modelsContainer"></div>
+      </div>
+
+      <div class="footer">
+        <span>© VIP Tracker</span>
+        <button id="btnClearCache" type="button" class="link-btn">تفريغ الكاش</button>
+      </div>
+    </div>
+  </div>
+
+  <noscript>
+    <div style="padding:16px;font-family:Arial;background:#fff">
+      يجب تفعيل JavaScript لتعمل الصفحة.
+    </div>
+  </noscript>
+</body>
+</html>
